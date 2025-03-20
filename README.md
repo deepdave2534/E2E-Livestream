@@ -62,5 +62,6 @@ We need to modify both sender and receiver:
 🟢 Changes in receiver.py
 ✅ Receive the challenge and its signature.
 ✅ Verify the signature using the sender's public key.
-✅ Proceed only if authentication passes.
+✅ Proceed only if authentication passes through it
+.
 
