@@ -1,88 +1,96 @@
 import socket
-import cv2
-import numpy as np
+import threading
 import pickle
 import struct
-from Crypto.Cipher import AES, PKCS1_OAEP
+import cv2
 from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
+from Crypto.Cipher import PKCS1_OAEP, AES
 from Crypto.Random import get_random_bytes
+from Crypto.Hash import SHA256
+from Crypto.Signature import pkcs1_15
 
-# Global variables
-SERVER_IP = "0.0.0.0"
+SERVER_IP = "127.0.0.1"
 PORT = 5000
 
-# Generate RSA key pair (sender's private & public key)
+# Generate RSA key pair
 rsa_key = RSA.generate(2048)
 private_key = rsa_key.export_key()
 public_key = rsa_key.publickey().export_key()
+print("[🔑] RSA key pair generated.")
 
-# Start server
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((SERVER_IP, PORT))
-server_socket.listen(5)
-print("[*] Waiting for connection...")
+# Function to handle each client (receiver or attacker)
+def handle_client(conn, addr):
+    print(f"[*] Connected to {addr}")
 
-conn, addr = server_socket.accept()
-print(f"[*] Connected to {addr}")
+    try:
+        # Step 1: Send public key
+        conn.sendall(public_key)
 
-# Send public key to the receiver
-conn.send(public_key)
+        # Step 2: Authentication challenge
+        challenge = get_random_bytes(32)
+        challenge_hash = SHA256.new(challenge)
+        signature = pkcs1_15.new(rsa_key).sign(challenge_hash)
+        conn.sendall(pickle.dumps((challenge, signature)))
 
-# Generate authentication challenge
-challenge = get_random_bytes(16)
-challenge_hash = SHA256.new(challenge)
+        # Step 3: Receive authentication result
+        auth_result = conn.recv(1)
+        if auth_result != b'1':
+            print(f"[❌] Authentication failed for {addr}! (Possibly an attacker)")
+            conn.sendall(b'0')  # Notify them of failure
+        else:
+            print(f"[✅] Authentication successful for {addr}!")
+            conn.sendall(b'1')  # Notify them of success
 
-# Sign challenge with sender's private key
-signature = pkcs1_15.new(RSA.import_key(private_key)).sign(challenge_hash)
+        # Step 4: Receive client's public key
+        receiver_public_key = conn.recv(4096)  # Increased buffer size
+        receiver_rsa_key = RSA.import_key(receiver_public_key)
 
-# Send challenge and signature
-conn.send(pickle.dumps((challenge, signature)))
+        # Step 5: Generate AES Key & Encrypt it
+        aes_key = get_random_bytes(16)
+        cipher_rsa = PKCS1_OAEP.new(receiver_rsa_key)
+        encrypted_aes_key = cipher_rsa.encrypt(aes_key)
+        conn.sendall(encrypted_aes_key)
 
-# Receive verification result
-auth_result = conn.recv(1)
-if auth_result != b'1':
-    print("[❌] Authentication failed! Disconnecting...")
-    conn.close()
-    server_socket.close()
-    exit()
+        print(f"[✅] Secure AES key sent to {addr}!")
 
-print("[✅] Authentication successful! Starting video stream...")
+        # Step 6: Start video streaming
+        cap = cv2.VideoCapture(0)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-# Generate AES Key and send to receiver
-aes_key = get_random_bytes(16)
-cipher_rsa = PKCS1_OAEP.new(RSA.import_key(public_key))
-encrypted_aes_key = cipher_rsa.encrypt(aes_key)
-conn.send(encrypted_aes_key)
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
 
-# Start video capture
-cap = cv2.VideoCapture(0)
+            # Encrypt frame with AES
+            cipher_aes = AES.new(aes_key, AES.MODE_EAX)
+            nonce = cipher_aes.nonce
+            encrypted_frame, tag = cipher_aes.encrypt_and_digest(frame_bytes)
 
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        break
+            # Send frame
+            data_packet = pickle.dumps((nonce, tag, encrypted_frame))
+            conn.sendall(struct.pack(">I", len(data_packet)))  # Send size
+            conn.sendall(data_packet)
 
-    _, buffer = cv2.imencode('.jpg', frame)
-    frame_bytes = buffer.tobytes()
+    except Exception as e:
+        print(f"[❌] Error with {addr}: {e}")
 
-    # Encrypt frame
-    cipher_aes = AES.new(aes_key, AES.MODE_EAX)
-    nonce = cipher_aes.nonce
-    encrypted_frame, tag = cipher_aes.encrypt_and_digest(frame_bytes)
+    finally:
+        print(f"[*] Closing connection with {addr}")
+        conn.close()
 
-    # Send encrypted frame
-    data_packet = pickle.dumps((nonce, tag, encrypted_frame))
-    conn.send(struct.pack(">I", len(data_packet)))  # Send size
-    conn.sendall(data_packet)
+# Main function
+def main():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((SERVER_IP, PORT))
+    server_socket.listen(5)
+    print(f"[*] Server listening on {SERVER_IP}:{PORT}")
 
-    cv2.imshow("Sending Video", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    while True:
+        conn, addr = server_socket.accept()
+        client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+        client_thread.start()
 
-cap.release()
-conn.close()
-server_socket.close()
-cv2.destroyAllWindows()
-print("[*] Stream stopped.")
+if __name__ == "__main__":
+    main()
