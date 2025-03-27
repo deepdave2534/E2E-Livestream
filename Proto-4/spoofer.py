@@ -8,14 +8,12 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
-# Spoofer Configuration (Update SERVER_IP if running on a different machine)
-SERVER_IP = "192.168.45.220"  # Change to sender's IP if running on another device
+# Spoofer Configuration (Update SERVER_IP if running on another device)
+SERVER_IP = "127.0.0.1"  # Change to sender's IP if needed
 PORT = 5000
 
 def reliable_recv(sock, size):
-    """
-    Ensure the full 'size' bytes are received before returning
-    """
+    """Ensure the full 'size' bytes are received before returning."""
     data = b''
     while len(data) < size:
         packet = sock.recv(size - len(data))
@@ -26,10 +24,11 @@ def reliable_recv(sock, size):
 
 while True:
     try:
-        print("[*] Spoofer trying to connect...")
+        print("\n[*] Spoofer trying to connect...")
         spoofer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        spoofer_socket.settimeout(10)  # Prevents infinite waiting
         spoofer_socket.connect((SERVER_IP, PORT))
-        print("[!] Connected to sender (as a spoofer)")
+        print("[✔] Connected to sender!")
 
         # Receive Sender's Public Key
         public_key = spoofer_socket.recv(2048)
@@ -38,6 +37,8 @@ while True:
             spoofer_socket.close()
             time.sleep(5)
             continue
+
+        print(f"[✔] Received public key ({len(public_key)} bytes)")
 
         # Generate a WRONG AES Key (Incorrect on purpose)
         wrong_aes_key = get_random_bytes(16)
@@ -58,6 +59,7 @@ while True:
                 break
 
             packet_size = struct.unpack(">I", packet_size_bytes)[0]  # Big-endian integer
+            print(f"[✔] Packet size received: {packet_size} bytes")
 
             # Receive the full data packet
             data_packet = reliable_recv(spoofer_socket, packet_size)
@@ -67,16 +69,18 @@ while True:
 
             try:
                 # Attempt to deserialize the packet
-                nonce, tag, encrypted_frame = pickle.loads(data_packet)
+                nonce, tag, encrypted_frame, frame_hash = pickle.loads(data_packet)
+                print(f"[✔] Received encrypted frame (Size: {len(encrypted_frame)} bytes)")
 
                 # Convert encrypted frame bytes into a NumPy array
                 encrypted_frame_array = np.frombuffer(encrypted_frame, dtype=np.uint8)
 
-                # Try decoding (may fail because decryption was wrong)
+                # Try decoding (will fail since decryption is incorrect)
                 encrypted_image = cv2.imdecode(encrypted_frame_array, cv2.IMREAD_COLOR)
 
                 # If decoding fails, display random noise
                 if encrypted_image is None:
+                    print("[❌] Failed to decode image! Displaying random noise...")
                     encrypted_image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
 
                 cv2.imshow("Spoofed Stream (Encrypted / Garbled)", encrypted_image)
@@ -90,7 +94,7 @@ while True:
                 print("[*] Exiting spoofed stream...")
                 raise KeyboardInterrupt  # Exit both loops cleanly
 
-    except (ConnectionResetError, ConnectionAbortedError):
+    except (ConnectionResetError, ConnectionAbortedError, socket.timeout):
         print("[!] Connection lost. Retrying in 5 seconds...")
         time.sleep(5)
 
