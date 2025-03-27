@@ -6,69 +6,72 @@ import struct
 from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
-from Crypto.Random import get_random_bytes
 
 # Global Variables
-SERVER_IP = "127.0.0.1"  # Spoofer connects as a client
+SERVER_IP = "127.0.0.1"  # Tries spoofing
 PORT = 5000
 
 # Connect to sender
-spoofer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-spoofer_socket.connect((SERVER_IP, PORT))
-print("[*] Spoofer connected to sender.")
+receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+receiver_socket.connect((SERVER_IP, PORT))
+print("[*] Receiver connected to sender.")
 
 # Receive Sender's Public Key
-public_key = spoofer_socket.recv(2048)
+public_key = receiver_socket.recv(2048)
 
 # Generate AES Key
-aes_key = get_random_bytes(16)  # Spoofer generates a random AES key (wrong key)
+aes_key = AES.get_random_bytes(16)  # Correct AES Key
 
 # Encrypt AES Key with Sender's Public Key
 cipher_rsa = PKCS1_OAEP.new(RSA.import_key(public_key))
 encrypted_aes_key = cipher_rsa.encrypt(aes_key)
 
 # Send Encrypted AES Key
-spoofer_socket.send(encrypted_aes_key)
-print("[*] Spoofer has exchanged AES key (but it's incorrect).")
+receiver_socket.send(encrypted_aes_key)
+print("[*] Receiver successfully exchanged AES key.")
 
 while True:
     # Receive packet size (4 bytes)
-    packet_size_bytes = spoofer_socket.recv(4)
+    packet_size_bytes = receiver_socket.recv(4)
     if not packet_size_bytes:
         print("[!] Sender disconnected.")
         break
 
     packet_size = struct.unpack(">I", packet_size_bytes)[0]
+    print(f"[RECEIVER] Received Packet Size: {packet_size} bytes")
 
     # Receive encrypted data
-    data_packet = spoofer_socket.recv(packet_size)
+    data_packet = receiver_socket.recv(packet_size)
 
     # Deserialize received packet
     nonce, tag, encrypted_frame = pickle.loads(data_packet)
 
     # Print partial received encrypted frame data
-    print(f"[SPOOFER] Received Encrypted Frame (first 20 bytes): {encrypted_frame[:20]}")
-    print(f"[SPOOFER] Nonce: {nonce.hex()} | Tag: {tag.hex()}")
+    print(f"[RECEIVER] Received Encrypted Frame (first 20 bytes): {encrypted_frame[:20]}")
+    print(f"[RECEIVER] Nonce: {nonce.hex()} | Tag: {tag.hex()}")
 
     try:
-        # Attempt to decrypt with wrong AES key
+        # Decrypt frame
         cipher_aes = AES.new(aes_key, AES.MODE_EAX, nonce=nonce)
         decrypted_frame = cipher_aes.decrypt_and_verify(encrypted_frame, tag)
+
+        # Print decrypted frame hash (to verify integrity)
+        print(f"[RECEIVER] Decrypted Frame Hash: {hash(decrypted_frame)}")
 
         # Convert bytes to image
         frame = np.frombuffer(decrypted_frame, dtype=np.uint8)
         frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
 
-        # Show spoofed video (will be distorted due to wrong decryption)
-        cv2.imshow("Spoofed Stream", frame)
+        # Show the actual video stream
+        cv2.imshow("Decrypted Stream", frame)
 
     except ValueError:
-        print("[❌] Spoofer failed to decrypt frame. Encrypted data is useless!")
+        print("[❌] Decryption failed! Possible data corruption.")
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 # Cleanup
-spoofer_socket.close()
+receiver_socket.close()
 cv2.destroyAllWindows()
-print("[*] Spoofer disconnected.")
+print("[*] Receiver disconnected.")
