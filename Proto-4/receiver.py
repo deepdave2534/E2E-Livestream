@@ -61,13 +61,13 @@ def start_receive():
                 # Hash verification
                 computed_hash = hashlib.sha256(decrypted_frame).digest()
                 if computed_hash != frame_hash:
-                    print("[❌] Frame hash mismatch! Possible tampering detected. Skipping frame.")
+                    print("[] Frame hash mismatch! Possible tampering detected. Skipping frame.")
                     continue
 
                 frame = np.frombuffer(decrypted_frame, dtype=np.uint8)
                 frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
                 if frame is None:
-                    print("[❌] Decoding failed. Skipping frame.")
+                    print("[] Decoding failed. Skipping frame.")
                     continue
 
                 cv2.imshow("Encrypted Stream", frame)
@@ -75,7 +75,7 @@ def start_receive():
                     break
 
             except (ValueError, pickle.UnpicklingError) as e:
-                print(f"[❌] Frame decoding error: {e}. Skipping frame.")
+                print(f"[] Frame decoding error: {e}. Skipping frame.")
                 continue
 
     except Exception as e:

@@ -9,7 +9,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 # Spoofer Configuration (Update SERVER_IP if running on a different machine)
-SERVER_IP = "192.168.45.220"  # Change to sender's IP if running on another device
+SERVER_IP = "127.0.0.1"  # Change to sender's IP if running on another device
 PORT = 5000
 
 def reliable_recv(sock, size):

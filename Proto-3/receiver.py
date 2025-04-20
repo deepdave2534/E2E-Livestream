@@ -29,7 +29,7 @@ def recv_exact(sock, size):
 def start_receive():
     global client_socket, streaming
 
-    SERVER_IP = "127.0.0.1"
+    SERVER_IP = "192.168.82.135"
     PORT = 5000
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

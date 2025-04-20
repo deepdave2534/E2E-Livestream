@@ -6,10 +6,10 @@ import cv2
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP, AES
 from Crypto.Random import get_random_bytes
-from Crypto.Hash import SHA256
+from Crypto.Hash import SHA256, HMAC
 from Crypto.Signature import pkcs1_15
 
-SERVER_IP = "127.0.0.1"
+SERVER_IP = "0.0.0.0"  # Listen on all network interfaces
 PORT = 5000
 
 # Generate RSA key pair
@@ -18,7 +18,7 @@ private_key = rsa_key.export_key()
 public_key = rsa_key.publickey().export_key()
 print("[🔑] RSA key pair generated.")
 
-# Function to handle each client (receiver or attacker)
+# Function to handle each client
 def handle_client(conn, addr):
     print(f"[*] Connected to {addr}")
 
@@ -36,13 +36,14 @@ def handle_client(conn, addr):
         auth_result = conn.recv(1)
         if auth_result != b'1':
             print(f"[❌] Authentication failed for {addr}! (Possibly an attacker)")
-            conn.sendall(b'0')  # Notify them of failure
+            conn.sendall(b'0')
+            return
         else:
             print(f"[✅] Authentication successful for {addr}!")
-            conn.sendall(b'1')  # Notify them of success
+            conn.sendall(b'1')
 
         # Step 4: Receive client's public key
-        receiver_public_key = conn.recv(4096)  # Increased buffer size
+        receiver_public_key = conn.recv(4096)
         receiver_rsa_key = RSA.import_key(receiver_public_key)
 
         # Step 5: Generate AES Key & Encrypt it
@@ -55,9 +56,14 @@ def handle_client(conn, addr):
 
         # Step 6: Start video streaming
         cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            print("[❌] Error: Cannot access webcam!")
+            return
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
+                print("[❌] No frame captured, stopping stream.")
                 break
 
             _, buffer = cv2.imencode('.jpg', frame)
@@ -68,8 +74,13 @@ def handle_client(conn, addr):
             nonce = cipher_aes.nonce
             encrypted_frame, tag = cipher_aes.encrypt_and_digest(frame_bytes)
 
-            # Send frame
-            data_packet = pickle.dumps((nonce, tag, encrypted_frame))
+            # Generate HMAC for integrity
+            hmac = HMAC.new(aes_key, digestmod=SHA256)
+            hmac.update(encrypted_frame)
+            hmac_value = hmac.digest()
+
+            # Send (Nonce + Tag + Encrypted Frame + HMAC)
+            data_packet = pickle.dumps((nonce, tag, encrypted_frame, hmac_value))
             conn.sendall(struct.pack(">I", len(data_packet)))  # Send size
             conn.sendall(data_packet)
 

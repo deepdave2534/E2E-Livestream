@@ -52,7 +52,7 @@ def start_receive():
                 nonce, tag, encrypted_frame, frame_hash, received_hmac = pickle.loads(data_packet)
 
                 if not verify_hmac(tag, encrypted_frame, received_hmac):
-                    print("[❌] HMAC verification failed! Possible tampering detected.")
+                    print("[] HMAC verification failed! Possible tampering detected.")
                     continue
 
                 cipher_aes = AES.new(aes_key, AES.MODE_EAX, nonce=nonce)
@@ -60,7 +60,7 @@ def start_receive():
 
                 computed_hash = hashlib.sha256(decrypted_frame).digest()
                 if computed_hash != frame_hash:
-                    print("[❌] Frame hash mismatch! Possible tampering detected.")
+                    print("[] Frame hash mismatch! Possible tampering detected.")
                     continue
 
                 frame = np.frombuffer(decrypted_frame, dtype=np.uint8)
@@ -73,7 +73,7 @@ def start_receive():
                     break
 
             except Exception:
-                print("[❌] Frame decoding error. Skipping frame.")
+                # print("[] Frame decoding error. Skipping frame.")
                 continue
 
     finally:

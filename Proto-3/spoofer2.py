@@ -8,7 +8,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 # Spoofer Configuration (Same as legitimate receiver)
-SERVER_IP = "127.0.0.1"  # Change to sender's actual IP
+SERVER_IP = "192.168.82.135"  # Change to sender's actual IP
 PORT = 5000
 
 # Attempt to connect to the sender
