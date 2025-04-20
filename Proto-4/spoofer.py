@@ -8,13 +8,8 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
-<<<<<<< HEAD
 # Spoofer Configuration (Update SERVER_IP if running on a different machine)
 SERVER_IP = "127.0.0.1"  # Change to sender's IP if running on another device
-=======
-# Spoofer Configuration (Update SERVER_IP if running on another device)
-SERVER_IP = "127.0.0.1"  # Change to sender's IP if needed
->>>>>>> 62a10a99309d494a484b677da5e9173ad002c765
 PORT = 5000
 
 def reliable_recv(sock, size):
